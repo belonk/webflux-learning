@@ -1,3 +1,4 @@
 rootProject.name = 'webflux-learning'
 include 'async-servlet'
 include 'webflux-helloworld'
+include 'webflux-mongodb'
