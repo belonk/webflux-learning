@@ -3,6 +3,8 @@ package com.koobyte.webflux.service.impl;
 import com.koobyte.webflux.dao.UserDao;
 import com.koobyte.webflux.domain.User;
 import com.koobyte.webflux.service.UserCrudService;
+import org.springframework.http.HttpStatus;
+import org.springframework.http.ResponseEntity;
 import org.springframework.stereotype.Service;
 import reactor.core.publisher.Flux;
 import reactor.core.publisher.Mono;
@@ -42,14 +44,22 @@ public class UserCrudServiceImpl implements UserCrudService {
 	}
 
 	@Override
-	public Mono<User> update(User user) {
+	public Mono<ResponseEntity<User>> update(User user) {
 		assert user != null && user.getId() != null;
-		return userDao.save(user);
+		return userDao.findById(user.getId())
+				// 找到，直接修改
+				.flatMap(u -> userDao.save(u).then(Mono.just(new ResponseEntity<>(u, HttpStatus.OK))))
+				// 未找到，返回404
+				.defaultIfEmpty(new ResponseEntity<>(HttpStatus.NOT_FOUND));
 	}
 
 	@Override
-	public Mono<Void> delete(Long id) {
-		return userDao.deleteById(id);
+	public Mono<ResponseEntity<Void>> delete(Long id) {
+		return userDao.findById(id) // 查询出数据
+				// 查询到了则删除，返回200
+				.flatMap(user -> userDao.deleteById(user.getId()).then(Mono.just(new ResponseEntity<Void>(HttpStatus.OK))))
+				// 没有找到返回404
+				.defaultIfEmpty(new ResponseEntity<>(HttpStatus.NOT_FOUND));
 	}
 
 	@Override

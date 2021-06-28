@@ -2,6 +2,8 @@ package com.koobyte.webflux.web;
 
 import com.koobyte.webflux.domain.User;
 import com.koobyte.webflux.service.UserCrudService;
+import org.springframework.http.MediaType;
+import org.springframework.http.ResponseEntity;
 import org.springframework.web.bind.annotation.*;
 import reactor.core.publisher.Flux;
 import reactor.core.publisher.Mono;
@@ -36,12 +38,12 @@ public class UserCrudController {
 	}
 
 	@PutMapping
-	public Mono<User> update(@RequestBody User user) {
+	public Mono<ResponseEntity<User>> update(@RequestBody User user) {
 		return userCrudService.update(user);
 	}
 
 	@DeleteMapping("/{id}")
-	public Mono<Void> delete(@PathVariable Long id) {
+	public Mono<ResponseEntity<Void>> delete(@PathVariable Long id) {
 		return userCrudService.delete(id);
 	}
 
@@ -51,7 +53,12 @@ public class UserCrudController {
 	}
 
 	@GetMapping("/all")
-	public Flux<User> findAll(User user) {
+	public Flux<User> findAll() {
+		return userCrudService.findAll();
+	}
+
+	@GetMapping(value = "/stream/all", produces = MediaType.TEXT_EVENT_STREAM_VALUE)
+	public Flux<User> findStreamAll() {
 		return userCrudService.findAll();
 	}
 }

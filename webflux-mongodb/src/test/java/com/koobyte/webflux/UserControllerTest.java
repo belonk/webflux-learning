@@ -60,6 +60,15 @@ public class UserControllerTest {
 	}
 
 	@Test
+	public void testUpdateNotFound() {
+		User user = new User();
+		user.setId(100L);
+		user.setName("王一百");
+		user.setAge(100);
+		restTemplate.put(URL, user, String.class);
+	}
+
+	@Test
 	public void testGet() {
 		User user = restTemplate.getForObject(URL + "/" + 1, User.class);
 		System.out.println(user);
@@ -68,8 +77,15 @@ public class UserControllerTest {
 	}
 
 	@Test
-	public void testDelete() {
+	public void testDeleteSuccessfully() {
+		// 删除成功，返回200
 		restTemplate.delete(URL + "/" + 2L);
+	}
+
+	@Test
+	public void testDeleteFailed() {
+		// 删除失败，返回404 no body
+		restTemplate.delete(URL + "/" + 100L);
 	}
 
 	@Test
