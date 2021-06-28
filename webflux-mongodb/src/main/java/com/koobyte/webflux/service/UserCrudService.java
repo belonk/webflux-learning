@@ -1,6 +1,7 @@
 package com.koobyte.webflux.service;
 
 import com.koobyte.webflux.domain.User;
+import org.springframework.http.ResponseEntity;
 import reactor.core.publisher.Flux;
 import reactor.core.publisher.Mono;
 
@@ -22,9 +23,9 @@ public interface UserCrudService {
 
 	Flux<User> add(List<User> users);
 
-	Mono<User> update(User user);
+	Mono<ResponseEntity<User>> update(User user);
 
-	Mono<Void> delete(Long id);
+	Mono<ResponseEntity<Void>> delete(Long id);
 
 	Mono<User> findOne(Long id);
 
