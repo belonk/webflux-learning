@@ -1,4 +1,4 @@
-package com.koobyte.webflux;
+package com.koobyte;
 
 import org.springframework.boot.SpringApplication;
 import org.springframework.boot.autoconfigure.SpringBootApplication;
