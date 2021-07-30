@@ -91,7 +91,12 @@ public class UserControllerTest {
 	@Test
 	public void testGetAll() throws JsonProcessingException {
 		String body = restTemplate.getForEntity(URL + "/all", String.class).getBody();
-		System.out.println(mapper.readValue(body, new TypeReference<List<User>>() {
-		}));
+		System.out.println(body);
+	}
+
+	@Test
+	public void testGetStreamAll() throws JsonProcessingException {
+		String body = restTemplate.getForEntity(URL + "/stream/all", String.class).getBody();
+		System.out.println(body);
 	}
 }
