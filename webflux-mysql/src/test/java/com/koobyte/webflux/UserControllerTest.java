@@ -52,7 +52,7 @@ public class UserControllerTest {
 		user.setId(7L);
 		user.setName("李四");
 		user.setAge(33); // 修改年龄
-		restTemplate.put(URL, user, String.class);
+		restTemplate.put(URL, user);
 	}
 
 	@Test
@@ -61,7 +61,7 @@ public class UserControllerTest {
 		user.setId(100L);
 		user.setName("王一百");
 		user.setAge(100);
-		restTemplate.put(URL, user, String.class);
+		restTemplate.put(URL, user);
 	}
 
 	@Test

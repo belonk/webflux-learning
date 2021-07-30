@@ -9,7 +9,7 @@ import org.springframework.data.relational.core.mapping.Table;
  * @author sunfuchang03@126.com
  * @since 1.0
  */
-// @Table("user")
+@Table("user")
 public class User {
 	//~ Static fields/constants/initializer
 
