@@ -1,0 +1,33 @@
+plugins {
+    id 'java'
+    /*spring依赖管理插件*/
+    id "io.spring.dependency-management" version "1.0.11.RELEASE"
+}
+
+group 'com.koobyte'
+version '1.0-SNAPSHOT'
+
+repositories {
+    mavenCentral()
+}
+
+dependencyManagement {
+    imports {
+        /*reactor bom*/
+        mavenBom "io.projectreactor:reactor-bom:2020.0.11"
+    }
+}
+
+dependencies {
+    testImplementation 'org.junit.jupiter:junit-jupiter-api:5.7.0'
+    testRuntimeOnly 'org.junit.jupiter:junit-jupiter-engine:5.7.0'
+    /*reactor核心包，版本使用reactor-bom中定义的版本*/
+    implementation 'io.projectreactor:reactor-core'
+    /*reactor测试包*/
+//    testCompileClasspath 'io.projectreactor:reactor-test'
+    implementation 'io.projectreactor:reactor-test'
+}
+
+test {
+    useJUnitPlatform()
+}
