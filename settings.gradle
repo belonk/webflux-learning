@@ -3,4 +3,5 @@ include 'async-servlet'
 include 'webflux-helloworld'
 include 'webflux-mongodb'
 include 'webflux-mysql'
+include 'reactor'
 
