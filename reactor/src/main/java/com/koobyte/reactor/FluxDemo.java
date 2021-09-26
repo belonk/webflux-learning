@@ -1,11 +1,12 @@
 package com.koobyte.reactor;
 
-import org.reactivestreams.Subscriber;
 import org.reactivestreams.Subscription;
+import reactor.core.Disposable;
 import reactor.core.publisher.BaseSubscriber;
 import reactor.core.publisher.Flux;
 import reactor.core.publisher.Mono;
 import reactor.test.StepVerifier;
+import reactor.util.function.Tuple2;
 
 import java.time.Duration;
 import java.util.Arrays;
@@ -31,13 +32,36 @@ public class FluxDemo {
 
 	//~ Methods
 
+	/**
+	 * Flux 和 Mono 是 Reactor 提供的最重要的组成部分，而这两个响应式类型所提供的操作就是粘合剂，这些操作将它们结合在一起，来创建数据
+	 * 流动的通道。在 Flux 和 Mono 之间，存在超过 500 种操作，其中的每一个可以被归类为：
+	 * <pre>
+	 * 1、创建操作
+	 * 2、联合操作
+	 * 3、传输操作
+	 * 4、逻辑处理操作
+	 * </pre>
+	 */
 	public static void main(String[] args) {
 		FluxDemo demo = new FluxDemo();
+
+		// 创建操作
 		demo.createBySimplestWay();
 		demo.createAndVerify();
 		demo.createByCollection();
 		demo.createByInterval();
-		demo.createWithErrorAndComplete();
+
+		// 联合操作
+		demo.mergeFluxes();
+		demo.zipFlux();
+		demo.zipFluxAndHandle();
+
+		// 传输操作
+
+		// 逻辑操作
+		demo.handleErrorAndComplete();
+		demo.handleSubscribe();
+		demo.disposeSubscribe();
 	}
 
 	public void createBySimplestWay() {
@@ -104,18 +128,86 @@ public class FluxDemo {
 
 		// 创建定时发送数据的Flux，从0开始，依次递增，可以无限发送，可以使用take操作限定获取前5个数据
 		Flux<Long> intervalFlux = Flux.interval(Duration.ofSeconds(1)).take(5);
-		intervalFlux.subscribe(System.out::println);
-		// StepVerifier.create(intervalFlux)
-		// 		.expectNext(0L)
-		// 		.expectNext(1L)
-		// 		.expectNext(2L)
-		// 		.expectNext(3L)
-		// 		.expectNext(4L)
-		// 		.verifyComplete();
+		// intervalFlux.subscribe(System.out::println);
+		StepVerifier.create(intervalFlux)
+				.expectNext(0L)
+				.expectNext(1L)
+				.expectNext(2L)
+				.expectNext(3L)
+				.expectNext(4L)
+				.verifyComplete();
 	}
 
-	public void createWithErrorAndComplete() {
-		System.out.println("===== createWithErrorAndComplete =====");
+	public void mergeFluxes() {
+		System.out.println("===== mergeFluxes =====");
+		/*
+		通常，Flux会迅速将数据发送给订阅者，这使得合并后的Flux无序。如果需要按照一定的顺序排列数据，可以将Flux的数据设置为延迟发送
+		 */
+
+		// 创建一个Flux，控制数据发送速度，便于测试合并后的元素顺序
+		Flux<String> stringFlux = Flux
+				.just("A", "B", "C")
+				.delayElements(Duration.ofMillis(500)); // 延迟发送数据，每0.5s发送一个
+
+		// 创建另一个Flux，除了控制数据发送速度，还开启延迟订阅，即：intFlux在stringFlux后执行
+		Flux<String> intFlux = Flux
+				.just("1", "2", "3")
+				.delaySubscription(Duration.ofMillis(250)) // 延迟订阅，0.25s后才能订阅并发送数据
+				.delayElements(Duration.ofMillis(500)); // 延迟发送数据
+
+		// 合并这两个 Flux 对象后，新的合并后的 Flux 被创建。当 StepVerifier 订阅合并后的 Flux 时，它会依次订阅两个 Flux 源。
+		// 合并后的 Flux 发出的数据的顺序，与源发出的数据的时间顺序一致。由于两个 Flux 都被设置为固定频率发送数据，因此值会通过合并后的 Flux 交替出现
+		Flux<String> mergedFlux = stringFlux.mergeWith(intFlux);
+		// 从结果可以看出，两个Flux的数据交替出现
+		StepVerifier.create(mergedFlux)
+				.expectNext("A")
+				.expectNext("1")
+				.expectNext("B")
+				.expectNext("2")
+				.expectNext("C")
+				.expectNext("3")
+				.verifyComplete();
+	}
+
+	public void zipFlux() {
+		System.out.println("===== zipFlux =====");
+
+		// 因为 mergeWith() 不能保证源之间的完美交替，所以可能需要考虑使用 zip() 操作。zip操作等待两个Flux都发出一个元素，当两个 Flux
+		// 对象压缩在一起时，会产生一个新的 Flux，该 Flux 生成一个元组，其中元组包含来自每个源 Flux 的一个项
+		// 与 mergeWith() 不同的是，zip() 操作是一个静态的创建操作，通过它创建的 Flux 使 character 和 food 完美对齐。从压缩后的
+		// Flux 发送出来的每个项目都是 Tuple2（包含两个对象的容器），其中包含每一个源 Flux 的数据。
+
+		Flux<String> stringFlux = Flux.just("A", "B", "C", "D");
+		Flux<String> intFlux = Flux.just("1", "2", "3");
+		Flux<Tuple2<String, String>> zipFlux = stringFlux.zipWith(intFlux);
+
+		// 由于stringFlux的元素"D"在intFlux中没有与之对应的元素，所以会被丢弃
+
+		StepVerifier.create(zipFlux)
+				.expectNextMatches(t -> t.getT1().equals("A") && t.getT2().equals("1"))
+				.expectNextMatches(t -> t.getT1().equals("B") && t.getT2().equals("2"))
+				.expectNextMatches(t -> t.getT1().equals("C") && t.getT2().equals("3"))
+				.verifyComplete();
+	}
+
+	public void zipFluxAndHandle() {
+		System.out.println("===== zipFluxAndHandle =====");
+
+		Flux<String> stringFlux = Flux.just("A", "B", "C", "D");
+		Flux<String> intFlux = Flux.just("1", "2", "3");
+		// 合并Flux并提供处理函数
+		Flux<String> zipFlux = stringFlux.zipWith(intFlux, (s, i) -> "s" + "->" + i);
+		// 也可以使用下边的方式，效果相同
+		// Flux<String> zipFlux = Flux.zip(stringFlux, intFlux, (s, i) -> s + "->" + i);
+		StepVerifier.create(zipFlux)
+				.expectNext("A->1")
+				.expectNext("B->2")
+				.expectNext("C->3")
+				.verifyComplete();
+	}
+
+	public void handleErrorAndComplete() {
+		System.out.println("===== handleErrorAndComplete =====");
 		// 创建整数序列的Flux，从1开始，共4个元素
 		Flux<Integer> ints = Flux.range(1, 4)
 				// 处理每个元素，如果i<=3正常返回，否则抛出异常
@@ -136,9 +228,11 @@ public class FluxDemo {
 		ints.subscribe(System.out::println,
 				error -> System.err.println("Error " + error),
 				() -> System.out.println("Done"));
+	}
 
-		// 重新创建一个Flux
-		ints = Flux.range(1, 4);
+	public void handleSubscribe() {
+		// 创建一个Flux
+		Flux<Integer> ints = Flux.range(1, 4);
 		// 订阅并设置收到订阅信号的回调，过期的方法
 		ints.subscribe(System.out::println,
 				error -> System.err.println("Error " + error),
@@ -169,5 +263,13 @@ public class FluxDemo {
 				System.out.println("Done");
 			}
 		});
+	}
+
+	public void disposeSubscribe() {
+		System.out.println("===== disposeSubscribe =====");
+
+		Flux<Long> intervalFlux = Flux.interval(Duration.ofSeconds(1)).take(100);
+		Disposable disposable = intervalFlux.subscribe(System.out::println);
+
 	}
 }
