@@ -1,6 +1,5 @@
 package com.koobyte.reactor;
 
-import org.reactivestreams.Publisher;
 import org.reactivestreams.Subscription;
 import reactor.core.Disposable;
 import reactor.core.publisher.BaseSubscriber;
@@ -13,6 +12,7 @@ import reactor.util.function.Tuple2;
 import java.time.Duration;
 import java.util.Arrays;
 import java.util.List;
+import java.util.Map;
 import java.util.function.Function;
 import java.util.stream.Stream;
 
@@ -54,6 +54,9 @@ public class FluxDemo {
 		demo.createAndVerify();
 		demo.createByCollection();
 		demo.createByInterval();
+		demo.handleErrorAndComplete();
+		demo.handleSubscribe();
+		demo.disposeSubscribe();
 
 		// 联合操作
 		System.out.println("===== 联合操作 =====");
@@ -75,12 +78,11 @@ public class FluxDemo {
 		demo.buffer();
 		demo.bufferThenParallel();
 		demo.collectList();
+		demo.collectMap();
 
 		// 逻辑操作
 		System.out.println("===== 逻辑操作 =====");
-		demo.handleErrorAndComplete();
-		demo.handleSubscribe();
-		demo.disposeSubscribe();
+
 	}
 
 	// ===========
@@ -159,6 +161,73 @@ public class FluxDemo {
 				.expectNext(3L)
 				.expectNext(4L)
 				.verifyComplete();
+	}
+
+	public void handleErrorAndComplete() {
+		System.out.println("> handleErrorAndComplete :");
+		// 创建整数序列的Flux，从1开始，共4个元素
+		Flux<Integer> ints = Flux.range(1, 4)
+				// 处理每个元素，如果i<=3正常返回，否则抛出异常
+				.map(i -> {
+					if (i <= 3) return i;
+					throw new RuntimeException("Got to 4");
+				});
+		// 订阅Flux，并且传递错误处理回调函数，打印错误信息
+		ints.subscribe(System.out::println, error -> System.err.println("Error: " + error));
+
+		/*
+		 * 错误和完成两者不会同时执行，存在错误则执行错误回调，否则执行完成回调。执行错误或者完成流都会终止
+		 */
+
+		// 重新创建一个Flux
+		ints = Flux.range(1, 4);
+		// 订阅，并传递错误处理函数和执行完成函数
+		ints.subscribe(System.out::println,
+				error -> System.err.println("Error " + error),
+				() -> System.out.println("Done"));
+	}
+
+	public void handleSubscribe() {
+		// 创建一个Flux
+		Flux<Integer> ints = Flux.range(1, 4);
+		// 订阅并设置收到订阅信号的回调，过期的方法
+		ints.subscribe(System.out::println,
+				error -> System.err.println("Error " + error),
+				() -> System.out.println("Done"),
+				// 订阅回调(onSubscribe被调用)，设置可以接收的数据个数, 如果个数小于发送者发送的个数，
+				// 表示流为处理完成，不会执行完成回调；相反，超过发送的个数认为流处理完成，可以执行完成回调
+				sub -> sub.request(2));
+		// 推荐使用subscribeWith方法，效果同上边过期的方法
+		ints = Flux.range(1, 4);
+		ints.subscribeWith(new BaseSubscriber<Integer>() {
+			@Override
+			protected void hookOnSubscribe(Subscription subscription) {
+				subscription.request(2);
+			}
+
+			@Override
+			protected void hookOnNext(Integer value) {
+				System.out.println(value);
+			}
+
+			@Override
+			protected void hookOnError(Throwable throwable) {
+				System.err.println("Error " + throwable);
+			}
+
+			@Override
+			protected void hookOnComplete() {
+				System.out.println("Done");
+			}
+		});
+	}
+
+	public void disposeSubscribe() {
+		System.out.println("> disposeSubscribe :");
+
+		Flux<Long> intervalFlux = Flux.interval(Duration.ofSeconds(1)).take(100);
+		Disposable disposable = intervalFlux.subscribe(System.out::println);
+
 	}
 
 	// ===========
@@ -393,9 +462,9 @@ public class FluxDemo {
 		Flux<String> fruitFlux = Flux.just("apple", "orange", "banana", "kiwi", "strawberry");
 		fruitFlux.buffer(3)
 				.flatMap(list -> Flux.fromIterable(list) // 将list转为Flux
-						.map(String::toUpperCase) // 使用map将水果名称转为大写
-						.subscribeOn(Schedulers.parallel()) // 并行发送
-						.log() // 打印日志，可以通过日志跟踪流数据转换情况，这里可以看到，所有水果名称的转换在2个线程中完成，线程名为parallel-x
+								.map(String::toUpperCase) // 使用map将水果名称转为大写
+								.subscribeOn(Schedulers.parallel()) // 并行发送
+						// .log() // 打印日志，可以通过日志跟踪流数据转换情况，这里可以看到，所有水果名称的转换在2个线程中完成，线程名为parallel-x
 				).subscribe(System.out::println);
 	}
 
@@ -414,77 +483,21 @@ public class FluxDemo {
 	public void collectMap() {
 		System.out.println("> collectMap :");
 
+		Flux<String> stringFlux = Flux.just("hello", "flux", "java");
+		// 将flux按照给定参数函数转为map，参数可以指定如何生成key和value
+		Mono<Map<String, String>> mapMono = stringFlux.collectMap(s -> s.substring(0, 1)); // 第一个字母作为key，原始元素作为value
 
+		StepVerifier.create(mapMono)
+				.expectNextMatches(map -> map.size() == 3
+						&& map.get("h").equals("hello")
+						&& map.get("f").equals("flux")
+						&& map.get("j").equals("java"))
+				.verifyComplete();
 	}
 
 	// ===========
 	// 逻辑
 	// ===========
 
-	public void handleErrorAndComplete() {
-		System.out.println("> handleErrorAndComplete :");
-		// 创建整数序列的Flux，从1开始，共4个元素
-		Flux<Integer> ints = Flux.range(1, 4)
-				// 处理每个元素，如果i<=3正常返回，否则抛出异常
-				.map(i -> {
-					if (i <= 3) return i;
-					throw new RuntimeException("Got to 4");
-				});
-		// 订阅Flux，并且传递错误处理回调函数，打印错误信息
-		ints.subscribe(System.out::println, error -> System.err.println("Error: " + error));
 
-		/*
-		 * 错误和完成两者不会同时执行，存在错误则执行错误回调，否则执行完成回调。执行错误或者完成流都会终止
-		 */
-
-		// 重新创建一个Flux
-		ints = Flux.range(1, 4);
-		// 订阅，并传递错误处理函数和执行完成函数
-		ints.subscribe(System.out::println,
-				error -> System.err.println("Error " + error),
-				() -> System.out.println("Done"));
-	}
-
-	public void handleSubscribe() {
-		// 创建一个Flux
-		Flux<Integer> ints = Flux.range(1, 4);
-		// 订阅并设置收到订阅信号的回调，过期的方法
-		ints.subscribe(System.out::println,
-				error -> System.err.println("Error " + error),
-				() -> System.out.println("Done"),
-				// 订阅回调(onSubscribe被调用)，设置可以接收的数据个数, 如果个数小于发送者发送的个数，
-				// 表示流为处理完成，不会执行完成回调；相反，超过发送的个数认为流处理完成，可以执行完成回调
-				sub -> sub.request(2));
-		// 推荐使用subscribeWith方法，效果同上边过期的方法
-		ints = Flux.range(1, 4);
-		ints.subscribeWith(new BaseSubscriber<Integer>() {
-			@Override
-			protected void hookOnSubscribe(Subscription subscription) {
-				subscription.request(2);
-			}
-
-			@Override
-			protected void hookOnNext(Integer value) {
-				System.out.println(value);
-			}
-
-			@Override
-			protected void hookOnError(Throwable throwable) {
-				System.err.println("Error " + throwable);
-			}
-
-			@Override
-			protected void hookOnComplete() {
-				System.out.println("Done");
-			}
-		});
-	}
-
-	public void disposeSubscribe() {
-		System.out.println("> disposeSubscribe :");
-
-		Flux<Long> intervalFlux = Flux.interval(Duration.ofSeconds(1)).take(100);
-		Disposable disposable = intervalFlux.subscribe(System.out::println);
-
-	}
 }
