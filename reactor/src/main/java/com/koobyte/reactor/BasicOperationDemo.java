@@ -1,5 +1,6 @@
 package com.koobyte.reactor;
 
+import reactor.core.Disposable;
 import reactor.core.publisher.Flux;
 import reactor.core.publisher.FluxSink;
 import reactor.core.publisher.Mono;
@@ -13,9 +14,11 @@ import java.util.ArrayList;
 import java.util.Arrays;
 import java.util.List;
 import java.util.Map;
+import java.util.concurrent.atomic.AtomicInteger;
 import java.util.function.BiFunction;
 import java.util.function.Consumer;
 import java.util.function.Function;
+import java.util.function.LongConsumer;
 import java.util.stream.Stream;
 
 /**
@@ -58,7 +61,9 @@ public class BasicOperationDemo {
 		demo.createByCollection();
 		demo.createByInterval();
 		demo.generateMethod();
+		demo.createMethod();
 		demo.createMethodAsBridge();
+		demo.pushMethod();
 
 		// 联合操作
 
@@ -192,6 +197,25 @@ public class BasicOperationDemo {
 				.verifyComplete();
 	}
 
+	public void createMethod() {
+		System.out.println("> createMethod :");
+
+		// 创建一个Flux，元素为0到10
+		AtomicInteger atomicInteger = new AtomicInteger(0);
+		Flux<Integer> integerFlux = Flux.create(new Consumer<FluxSink<Integer>>() {
+			@Override
+			public void accept(FluxSink<Integer> fluxSink) {
+				while (atomicInteger.get() <= 10)
+					fluxSink.next(atomicInteger.getAndIncrement());
+				fluxSink.complete();
+			}
+		}).log();
+
+		StepVerifier.create(integerFlux)
+				.expectNext(0, 1, 2, 3, 4, 5, 6, 7, 8, 9, 10)
+				.verifyComplete();
+	}
+
 	public void createMethodAsBridge() {
 		System.out.println("> createMethodAsBridge :");
 
@@ -276,6 +300,43 @@ public class BasicOperationDemo {
 		void onDateChunk(List<T> chunk);
 
 		void processComplete();
+	}
+
+	public void pushMethod() {
+		System.out.println("> pushMethod :");
+
+		// push方法与create类似，但是push只能单线程发送元素
+
+		final int[] i = {0};
+		Flux<Integer> push = Flux.push(new Consumer<FluxSink<Integer>>() {
+			@Override
+			public void accept(FluxSink<Integer> fluxSink) {
+				fluxSink.onRequest(new LongConsumer() { // 自定义请求
+					@Override
+					public void accept(long value) {
+						System.out.println("request : " + value);
+					}
+				}).onCancel(new Disposable() { // 取消时清理
+					@Override
+					public void dispose() {
+						System.out.println("cancel");
+					}
+				}).onDispose(new Disposable() { // 终止时清理
+					@Override
+					public void dispose() {
+						System.out.println("dispose");
+					}
+				});
+
+				while (i[0] <= 4)
+					fluxSink.next(i[0]++);
+				fluxSink.complete();
+			}
+		}).log();
+
+		StepVerifier.create(push)
+				.expectNext(0, 1, 2, 3, 4)
+				.verifyComplete();
 	}
 
 	// ===========
