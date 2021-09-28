@@ -1,18 +1,20 @@
 package com.koobyte.reactor;
 
-import org.reactivestreams.Subscription;
-import reactor.core.Disposable;
-import reactor.core.publisher.BaseSubscriber;
 import reactor.core.publisher.Flux;
+import reactor.core.publisher.FluxSink;
 import reactor.core.publisher.Mono;
+import reactor.core.publisher.SynchronousSink;
 import reactor.core.scheduler.Schedulers;
 import reactor.test.StepVerifier;
 import reactor.util.function.Tuple2;
 
 import java.time.Duration;
+import java.util.ArrayList;
 import java.util.Arrays;
 import java.util.List;
 import java.util.Map;
+import java.util.function.BiFunction;
+import java.util.function.Consumer;
 import java.util.function.Function;
 import java.util.stream.Stream;
 
@@ -49,13 +51,17 @@ public class BasicOperationDemo {
 		BasicOperationDemo demo = new BasicOperationDemo();
 
 		// 创建操作
+
 		System.out.println("===== 创建操作 =====");
 		demo.createBySimplestWay();
 		demo.createAndVerify();
 		demo.createByCollection();
 		demo.createByInterval();
+		demo.generateMethod();
+		demo.createMethodAsBridge();
 
 		// 联合操作
+
 		System.out.println("===== 联合操作 =====");
 		demo.mergeFluxes();
 		demo.zipFlux();
@@ -63,6 +69,7 @@ public class BasicOperationDemo {
 		demo.firstFlux();
 
 		// 传输操作
+
 		System.out.println("===== 传输操作 =====");
 		demo.skipItems();
 		demo.skipByTime();
@@ -78,6 +85,7 @@ public class BasicOperationDemo {
 		demo.collectMap();
 
 		// 逻辑操作
+
 		System.out.println("===== 逻辑操作 =====");
 		demo.all();
 		demo.any();
@@ -159,6 +167,115 @@ public class BasicOperationDemo {
 				.expectNext(3L)
 				.expectNext(4L)
 				.verifyComplete();
+	}
+
+	public void generateMethod() {
+		System.out.println("> generateMethod :");
+
+		// generate方法用于同步生成Flux，第一个参数为初始值函数，第二个为生成下一个数据的处理函数
+		Flux<String> stringFlux = Flux.generate(() -> 0, new BiFunction<Integer, SynchronousSink<String>, Integer>() {
+			@Override
+			public Integer apply(Integer integer, SynchronousSink<String> synchronousSink) {
+				synchronousSink.next("3 x " + integer + " = " + 3 * integer);
+				if (integer == 4)
+					synchronousSink.complete(); // 如果元素等于4，不再生成
+				return integer + 1; // 否则，下一个元素 + 1
+			}
+		});
+
+		StepVerifier.create(stringFlux)
+				.expectNext("3 x 0 = 0")
+				.expectNext("3 x 1 = 3")
+				.expectNext("3 x 2 = 6")
+				.expectNext("3 x 3 = 9")
+				.expectNext("3 x 4 = 12")
+				.verifyComplete();
+	}
+
+	public void createMethodAsBridge() {
+		System.out.println("> createMethodAsBridge :");
+
+		// create异步多线程创建Flux，可以实现连接原有API到reactive的桥梁
+
+		System.out.println("原有API处理：");
+		List<String> data = Arrays.asList("a", "b", "c");
+		DataProcessor<String> processor = new DataProcessor<>();
+		processor.setData(data).registerListener(new DataEventListener<String>() {
+			@Override
+			public void onDateChunk(List<String> chunk) {
+				for (String s : chunk) {
+					System.out.println(s);
+				}
+			}
+
+			@Override
+			public void processComplete() {
+				System.out.println("data process completed.");
+			}
+		}).process();
+
+		System.out.println("原有API转为Flux：");
+		// create方法两个参数：
+		// 1、元素创建函数
+		// 2、数据溢出时处理策略：
+		// IGNORE - 忽略下游的背压请求，可能产生IllegalStateException
+		// ERROR - 下游不能消费时抛出IllegalStateException
+		// DROP - 下游为准备接收数据时丢弃
+		// LATEST - 使下游仅获取最新的数据
+		// BUFFER - 默认，下游不能消费时无界缓存所有数据，可能抛出OOM
+		Flux<String> stringFlux = Flux.create(new Consumer<FluxSink<String>>() {
+			@Override
+			public void accept(FluxSink<String> fluxSink) {
+				// 这里将原有的DataEventListener转换为reactor的Flux
+				processor.registerListener(new DataEventListener<String>() {
+					@Override
+					public void onDateChunk(List<String> chunk) {
+						for (String s : chunk) {
+							fluxSink.next(s);
+						}
+					}
+
+					@Override
+					public void processComplete() {
+						fluxSink.complete();
+					}
+				}).process();
+			}
+		}, FluxSink.OverflowStrategy.BUFFER);
+
+		StepVerifier.create(stringFlux)
+				.expectNext("a", "b", "c")
+				.verifyComplete();
+	}
+
+	// 数据处理器
+	private static class DataProcessor<T> {
+		private List<T> data = new ArrayList<>();
+		private DataEventListener<T> listener;
+
+		public DataProcessor<T> setData(List<T> data) {
+			this.data = data;
+			return this;
+		}
+
+		public DataProcessor<T> registerListener(DataEventListener<T> listener) {
+			this.listener = listener;
+			return this;
+		}
+
+		public void process() {
+			System.out.println("处理数据...");
+			listener.onDateChunk(this.data);
+			System.out.println("处理数据完成");
+			listener.processComplete();
+		}
+	}
+
+	// 原有的API
+	private interface DataEventListener<T> {
+		void onDateChunk(List<T> chunk);
+
+		void processComplete();
 	}
 
 	// ===========
