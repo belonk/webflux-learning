@@ -43,29 +43,30 @@ public class SubscribeDemo {
 
 		// 推荐使用subscribeWith方法，效果同上边过期的方法
 		ints = Flux.range(1, 4);
-		ints.subscribeWith(new BaseSubscriber<Integer>() {
-			@Override
-			protected void hookOnSubscribe(Subscription subscription) {
-				subscription.request(2);
-			}
+		ints.doOnRequest(r -> System.out.println("request : " + r)) // 打印请求数量
+				.subscribeWith(new BaseSubscriber<Integer>() {
+					@Override
+					protected void hookOnSubscribe(Subscription subscription) {
+						subscription.request(2);
+					}
 
-			@Override
-			protected void hookOnNext(Integer value) {
-				// 处理
-				System.out.println(value);
-				// 处理完成后再请求一个数据，这里可以根据情况设置请求数量来控制背压
-				request(1);
-			}
+					@Override
+					protected void hookOnNext(Integer value) {
+						// 处理
+						System.out.println(value);
+						// 处理完成后再请求一个数据，这里可以根据情况设置请求数量来控制背压
+						request(1);
+					}
 
-			@Override
-			protected void hookOnError(Throwable throwable) {
-				System.err.println("Error " + throwable);
-			}
+					@Override
+					protected void hookOnError(Throwable throwable) {
+						System.err.println("Error " + throwable);
+					}
 
-			@Override
-			protected void hookOnComplete() {
-				System.out.println("Done");
-			}
-		});
+					@Override
+					protected void hookOnComplete() {
+						System.out.println("Done");
+					}
+				});
 	}
 }
