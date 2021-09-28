@@ -24,7 +24,8 @@ public class SubscribeDemo {
 
 	public static void main(String[] args) {
 		SubscribeDemo demo = new SubscribeDemo();
-		demo.handleSubscribe();
+		// demo.handleSubscribe();
+		demo.handleSubscribeLimitRate();
 	}
 
 	public void handleSubscribe() {
@@ -47,7 +48,7 @@ public class SubscribeDemo {
 				.subscribeWith(new BaseSubscriber<Integer>() {
 					@Override
 					protected void hookOnSubscribe(Subscription subscription) {
-						subscription.request(2);
+						subscription.request(2); // 必须调用request来请求数据
 					}
 
 					@Override
@@ -55,7 +56,7 @@ public class SubscribeDemo {
 						// 处理
 						System.out.println(value);
 						// 处理完成后再请求一个数据，这里可以根据情况设置请求数量来控制背压
-						request(1);
+						request(1); // 必须调用request来继续请求数据
 					}
 
 					@Override
@@ -66,6 +67,25 @@ public class SubscribeDemo {
 					@Override
 					protected void hookOnComplete() {
 						System.out.println("Done");
+					}
+				});
+	}
+
+	private void handleSubscribeLimitRate() {
+		Flux<Integer> ints = Flux.range(1, 100);
+		ints.doOnRequest(r -> System.out.println("request : " + r)) // 打印请求数量
+				.limitRate(5) // 限制上游Publisher的发送速率，每次最大只能发送5个
+				.subscribeWith(new BaseSubscriber<Integer>() {
+					@Override
+					protected void hookOnSubscribe(Subscription subscription) {
+						subscription.request(2);
+					}
+
+					@Override
+					protected void hookOnNext(Integer value) {
+						// 处理
+						System.out.println(value);
+						request(10); // 从上游Publisher请求10个数据，但是由于限制了limitRate为5，所以最大只能请求5个数据
 					}
 				});
 	}
