@@ -82,6 +82,7 @@ public class BasicOperationDemo {
 		demo.takeByTime();
 		demo.filter();
 		demo.distinct();
+		demo.handle();
 		demo.map();
 		demo.flatMap();
 		demo.buffer();
@@ -505,6 +506,26 @@ public class BasicOperationDemo {
 		StepVerifier.create(stringFlux)
 				.expectNext("hello", "world", "web")
 				.verifyComplete();
+	}
+
+	public void handle() {
+		System.out.println("> handle :");
+		Flux<String> alphabet = Flux.just(-1, 30, 13, 9, 20)
+				// 自定义处理函数，将Flux中的整数转为ascii字母，并过滤掉null的值
+				.handle((i, sink) -> {
+					String letter = alphabet(i);
+					if (letter != null)
+						sink.next(letter);
+				});
+		alphabet.subscribe(System.out::println); // 输出 M I T
+	}
+
+	public String alphabet(int letterNumber) {
+		if (letterNumber < 1 || letterNumber > 26) {
+			return null;
+		}
+		int letterIndexAscii = 'A' + letterNumber - 1;
+		return "" + (char) letterIndexAscii;
 	}
 
 	// 对于 Flux 或 Mono，最常用的操作之一是将已发布的项转换为其他形式或类型。Reactor 为此提供 map() 和flatMap() 操作。
