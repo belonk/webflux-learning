@@ -3,6 +3,7 @@ package com.koobyte.reactor;
 import reactor.core.publisher.Flux;
 import reactor.core.publisher.Mono;
 import reactor.core.scheduler.Schedulers;
+import reactor.test.StepVerifier;
 
 import java.time.Duration;
 import java.util.concurrent.TimeUnit;
@@ -37,6 +38,11 @@ public class ScheduleDemo {
 	 * <li>{@link Schedulers#boundedElastic()}: 使用有界弹性线程池，它按需创建工作线程，并重用空闲的线程，空闲的线程存活时间为60秒。
 	 * 线程池有容量上限，默认是CPU核心数 x 10个，提交的任务到达100000个上限后就会排队，并在线程可用时重新调度
 	 * <li>{@link Schedulers#parallel()}: 针对并行工作进行调整的固定工作线程池，它会创建与 CPU 内核一样多的工作线程
+	 * <p>
+	 * 您可以通过Schedulers.fromExecutorService(ExecutorService)重用已存在的ExecutorService来创建Scheduler，但不鼓励这样做。
+	 * <p>
+	 * 您还可以使用这些newXXX 方法创建各种调度程序类型的新实例。例如，使用Schedulers.newParallel(yourScheduleName)创建一个名为
+	 * yourScheduleName 的新并行调度程序。
 	 */
 	public static void main(String[] args) throws Exception {
 		ScheduleDemo demo = new ScheduleDemo();
@@ -46,6 +52,7 @@ public class ScheduleDemo {
 		demo.scheduleSingle();
 		demo.scheduleBoundedElastic();
 		demo.scheduleParallel();
+		demo.intervalSingle();
 
 		// 让程序充分执行
 		TimeUnit.SECONDS.sleep(10);
@@ -107,14 +114,34 @@ public class ScheduleDemo {
 		System.out.println("> scheduleParallel:");
 		Flux<Integer> ints = Flux.just(1, 2, 3, 4, 5, 6);
 
-		ints.map(i -> Math.pow(i, 2))
+		Flux<Double> doubleFlux = ints.map(i -> Math.pow(i, 2))
 				.subscribeOn(Schedulers.parallel())
-				// .log()
-				.subscribe(v -> System.out.println("Thread: " + Thread.currentThread().getName() + ", v = " + v));
+				.log();
+		// .subscribe(v -> System.out.println("Thread: " + Thread.currentThread().getName() + ", v = " + v));
+		StepVerifier.create(doubleFlux)
+				.expectNext(1.0d, 4.0d, 9.0d, 16.0d, 25.0d, 36.0d)
+				.verifyComplete();
 
-		ints.flatMap(i -> Mono.just(Math.pow(i, 2)))
+		Flux<Double> doubleFlux1 = ints.flatMap(i -> Mono.just(Math.pow(i, 2)))
 				.subscribeOn(Schedulers.parallel())
-				// .log()
-				.subscribe(v -> System.out.println("Thread: " + Thread.currentThread().getName() + ", v = " + v));
+				.log();
+		// .subscribe(v -> System.out.println("Thread: " + Thread.currentThread().getName() + ", v = " + v));
+		StepVerifier.create(doubleFlux1)
+				.expectNext(1.0d, 4.0d, 9.0d, 16.0d, 25.0d, 36.0d)
+				.verifyComplete();
+	}
+
+	private void intervalSingle() {
+		System.out.println("> intervalSingle :");
+		// 默认请的interval方法的调度策略是parallel，可以改为single
+		Flux<Long> interval1 = Flux.interval(Duration.ofMillis(300)).take(5).log();
+		Flux<Long> interval2 = Flux.interval(Duration.ofMillis(300), Schedulers.newSingle("test")).take(5);
+
+		StepVerifier.create(interval1)
+				.expectNext(0L, 1L, 2L, 3L, 4L)
+				.verifyComplete();
+
+		// interval1.subscribe(v -> System.out.println("Thread: " + Thread.currentThread().getName() + ", v = " + v));
+		// interval2.subscribe(v -> System.out.println("Thread: " + Thread.currentThread().getName() + ", v = " + v));
 	}
 }
