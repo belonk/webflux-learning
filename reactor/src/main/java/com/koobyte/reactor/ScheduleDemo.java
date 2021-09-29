@@ -1,7 +1,11 @@
 package com.koobyte.reactor;
 
+import reactor.core.publisher.Flux;
 import reactor.core.publisher.Mono;
 import reactor.core.scheduler.Schedulers;
+
+import java.time.Duration;
+import java.util.concurrent.TimeUnit;
 
 /**
  * Created by sun on 2021/9/29.
@@ -37,13 +41,18 @@ public class ScheduleDemo {
 	public static void main(String[] args) throws Exception {
 		ScheduleDemo demo = new ScheduleDemo();
 		demo.exeInNewThread();
-		// demo.scheduleSingle();
-		// demo.scheduleImmediate();
-		// demo.scheduleBoundedElastic();
-		// demo.scheduleParallel();
+		// TODO 看起来都是在单个线程中执行的，如何并行执行？
+		demo.scheduleImmediate();
+		demo.scheduleSingle();
+		demo.scheduleBoundedElastic();
+		demo.scheduleParallel();
+
+		// 让程序充分执行
+		TimeUnit.SECONDS.sleep(10);
 	}
 
 	public void exeInNewThread() throws InterruptedException {
+		System.out.println("> exeInNewThread:");
 		// 大多数情况下，Mono和Flux在上一个操作或者顶层元运算符执行的线程中运行，比如在创建线程中执行
 
 		// 在main线程中创建Mono
@@ -58,5 +67,54 @@ public class ScheduleDemo {
 				.subscribe(v -> System.out.println("新线程：" + Thread.currentThread().getName())));
 		thread.start();
 		thread.join();
+	}
+
+	public void scheduleImmediate() {
+		System.out.println("> scheduleImmediate:");
+		Flux<Integer> ints = Flux.just(1, 2, 3, 4, 5, 6);
+
+		ints.flatMap(i -> Mono.just(Math.pow(i, 2)))
+				.subscribeOn(Schedulers.immediate())
+				// .log()
+				.subscribe(v -> System.out.println("Thread: " + Thread.currentThread().getName() + ", v = " + v));
+	}
+
+	public void scheduleSingle() {
+		System.out.println("> scheduleSingle:");
+		Flux<Integer> ints = Flux.just(1, 2, 3, 4, 5, 6);
+
+		ints.flatMap(i -> Mono.just(Math.pow(i, 2)))
+				.subscribeOn(Schedulers.single())
+				// .log()
+				.subscribe(v -> System.out.println("Thread: " + Thread.currentThread().getName() + ", v = " + v));
+	}
+
+	public void scheduleBoundedElastic() {
+		System.out.println("> scheduleBoundedElastic:");
+		Flux<Integer> ints = Flux.just(1, 2, 3, 4, 5, 6);
+
+		ints.map(i -> Math.pow(i, 2))
+				.subscribeOn(Schedulers.boundedElastic())
+				.subscribe(v -> System.out.println("Thread: " + Thread.currentThread().getName() + ", v = " + v));
+
+		ints.flatMap(i -> Mono.just(Math.pow(i, 2)))
+				.subscribeOn(Schedulers.boundedElastic())
+				// .log()
+				.subscribe(v -> System.out.println("Thread: " + Thread.currentThread().getName() + ", v = " + v));
+	}
+
+	public void scheduleParallel() {
+		System.out.println("> scheduleParallel:");
+		Flux<Integer> ints = Flux.just(1, 2, 3, 4, 5, 6);
+
+		ints.map(i -> Math.pow(i, 2))
+				.subscribeOn(Schedulers.parallel())
+				// .log()
+				.subscribe(v -> System.out.println("Thread: " + Thread.currentThread().getName() + ", v = " + v));
+
+		ints.flatMap(i -> Mono.just(Math.pow(i, 2)))
+				.subscribeOn(Schedulers.parallel())
+				// .log()
+				.subscribe(v -> System.out.println("Thread: " + Thread.currentThread().getName() + ", v = " + v));
 	}
 }
