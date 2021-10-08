@@ -6,6 +6,7 @@ import reactor.core.scheduler.Schedulers;
 import reactor.test.StepVerifier;
 
 import java.time.Duration;
+import java.util.concurrent.ExecutorService;
 import java.util.concurrent.TimeUnit;
 
 /**
@@ -39,7 +40,7 @@ public class ScheduleDemo {
 	 * 线程池有容量上限，默认是CPU核心数 x 10个，提交的任务到达100000个上限后就会排队，并在线程可用时重新调度
 	 * <li>{@link Schedulers#parallel()}: 针对并行工作进行调整的固定工作线程池，它会创建与 CPU 内核一样多的工作线程
 	 * <p>
-	 * 您可以通过Schedulers.fromExecutorService(ExecutorService)重用已存在的ExecutorService来创建Scheduler，但不鼓励这样做。
+	 * 您可以通过{@link Schedulers#fromExecutorService(ExecutorService)}重用已存在的ExecutorService来创建Scheduler，但不鼓励这样做。
 	 * <p>
 	 * 您还可以使用这些newXXX 方法创建各种调度程序类型的新实例。例如，使用Schedulers.newParallel(yourScheduleName)创建一个名为
 	 * yourScheduleName 的新并行调度程序。
