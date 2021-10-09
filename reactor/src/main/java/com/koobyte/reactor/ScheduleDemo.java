@@ -2,6 +2,7 @@ package com.koobyte.reactor;
 
 import reactor.core.publisher.Flux;
 import reactor.core.publisher.Mono;
+import reactor.core.scheduler.Scheduler;
 import reactor.core.scheduler.Schedulers;
 import reactor.test.StepVerifier;
 
@@ -42,7 +43,7 @@ public class ScheduleDemo {
 	 * <p>
 	 * 您可以通过{@link Schedulers#fromExecutorService(ExecutorService)}重用已存在的ExecutorService来创建Scheduler，但不鼓励这样做。
 	 * <p>
-	 * 您还可以使用这些newXXX 方法创建各种调度程序类型的新实例。例如，使用Schedulers.newParallel(yourScheduleName)创建一个名为
+	 * 您还可以使用这些newXXX 方法创建各种调度程序类型的新实例。例如，使用Schedulers.publicOnNewParallel(yourScheduleName)创建一个名为
 	 * yourScheduleName 的新并行调度程序。
 	 */
 	public static void main(String[] args) throws Exception {
@@ -54,6 +55,8 @@ public class ScheduleDemo {
 		demo.scheduleBoundedElastic();
 		demo.scheduleParallel();
 		demo.intervalSingle();
+		demo.publicOnNewParallel();
+		demo.subscribeOnNewParallel();
 
 		// 让程序充分执行
 		TimeUnit.SECONDS.sleep(10);
@@ -142,7 +145,37 @@ public class ScheduleDemo {
 				.expectNext(0L, 1L, 2L, 3L, 4L)
 				.verifyComplete();
 
-		// interval1.subscribe(v -> System.out.println("Thread: " + Thread.currentThread().getName() + ", v = " + v));
-		// interval2.subscribe(v -> System.out.println("Thread: " + Thread.currentThread().getName() + ", v = " + v));
+		interval1.subscribe(v -> System.out.println("Thread: " + Thread.currentThread().getName() + ", v = " + v));
+		interval2.subscribe(v -> System.out.println("Thread: " + Thread.currentThread().getName() + ", v = " + v));
+	}
+
+	public void publicOnNewParallel() {
+		System.out.println("> publicOnNewParallel :");
+
+		Scheduler s = Schedulers.newParallel("public-parallel-scheduler", 4); // 创建并行Scheduler
+
+		final Flux<String> flux = Flux
+				.range(1, 2)
+				.map(i -> 10 + i) // map在匿名线程中执行, 比如5
+				.publishOn(s) // 切换序列在其他线程中发布，比如线程1
+				.map(i -> "value " + i) // map在线程1中执行
+				.log();
+
+		new Thread(() -> flux.subscribe(System.out::println));
+	}
+
+	public void subscribeOnNewParallel() {
+		System.out.println("> subscribeOnNewParallel :");
+
+		Scheduler s = Schedulers.newParallel("subscribe-parallel-scheduler", 4);
+
+		final Flux<String> flux = Flux
+				.range(1, 2)
+				.map(i -> 10 + i)
+				.subscribeOn(s) // 订阅时切换到自建调度策略
+				.map(i -> "value " + i)
+				.log();
+
+		new Thread(() -> flux.subscribe(System.out::println));
 	}
 }
