@@ -2,11 +2,8 @@ package com.koobyte.reactor;
 
 import reactor.core.Disposable;
 import reactor.core.publisher.Flux;
-import reactor.test.StepVerifier;
 
 import java.time.Duration;
-import java.time.LocalDateTime;
-import java.util.Date;
 import java.util.Timer;
 import java.util.TimerTask;
 import java.util.concurrent.TimeUnit;
