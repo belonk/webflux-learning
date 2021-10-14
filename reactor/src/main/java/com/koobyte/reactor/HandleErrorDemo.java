@@ -2,12 +2,14 @@ package com.koobyte.reactor;
 
 import org.reactivestreams.Publisher;
 import reactor.core.Disposable;
+import reactor.core.Exceptions;
 import reactor.core.publisher.Flux;
 import reactor.core.publisher.SignalType;
 import reactor.util.retry.Retry;
 
 import java.time.Duration;
 import java.util.concurrent.atomic.AtomicBoolean;
+import java.util.concurrent.atomic.AtomicInteger;
 import java.util.function.Consumer;
 import java.util.function.Function;
 
@@ -43,6 +45,8 @@ public class HandleErrorDemo {
 		demo.using();
 		demo.retry();
 		demo.retryWhen();
+		demo.retrySignal();
+		demo.transientError();
 	}
 
 	public void onErrorReturn() {
@@ -192,6 +196,7 @@ public class HandleErrorDemo {
 			}
 		};
 
+		// 反应式中用using方法尝试使用资源
 		Flux<String> flux = Flux.using(
 				() -> disposableInstance, // 生成资源
 				disposable -> Flux.just(disposable.toString()), // 处理资源
@@ -213,11 +218,11 @@ public class HandleErrorDemo {
 						return "tick " + input;
 					throw new RuntimeException("boom");
 				})
-				.retry(1) // 如果出错，则重试一次
+				.retry(1) // 如果出错，则重试一次，重试其实就是重新订阅一次，从0开始计时
 				.elapsed() // 将每个值与自上一个值发出以来的持续时间相关联
 				.subscribe(System.out::println, System.err::println);
 
-		// 包装interval后不会立即退出
+		// 保证interval后不会立即退出
 		Thread.sleep(2100);
 
 		/*~:
@@ -237,8 +242,108 @@ public class HandleErrorDemo {
 		Flux.<String>error(new IllegalArgumentException()) // 不断产生错误
 				.doOnError(System.out::println) // 打印异常
 				// 定义重试策略：前三个错误重试，然后放弃
-				.retryWhen(Retry.from(companion -> companion.take(3)))
+				.retryWhen(new Retry() { // 效果同：Retry.from(companion -> companion.take(3))
+					@Override
+					public Publisher<?> generateCompanion(Flux<RetrySignal> retrySignals) {
+						// 获取前三个重试信号并重试，第4个错误丢弃，序列终止
+						return retrySignals.take(3);
+					}
+				})
 				.elapsed()
-				.subscribe(System.out::println);
+				.subscribe(System.out::println); // 订阅并打印元素
+		/*~:
+		一共输出4个错误信息：
+		java.lang.IllegalArgumentException
+		java.lang.IllegalArgumentException
+		java.lang.IllegalArgumentException
+		java.lang.IllegalArgumentException
+		 */
+	}
+
+	public void retrySignal() {
+		System.out.println("> retrySignal :");
+
+		AtomicInteger errorCount = new AtomicInteger();
+		Flux.<String>error(new IllegalArgumentException()) // 创建一个不断产生错误的Flux序列
+				.doOnError(new Consumer<Throwable>() { // 错误处理逻辑
+					@Override
+					public void accept(Throwable throwable) {
+						errorCount.getAndIncrement();
+					}
+				})
+				// 自定义重新策略
+				.retryWhen(Retry.from(new Function<Flux<Retry.RetrySignal>, Flux<Long>>() {
+					@Override
+					public Flux<Long> apply(Flux<Retry.RetrySignal> retrySignalFlux) {
+						// 使用map函数处理flux，获取到RetrySignal对象
+						return retrySignalFlux.map(new Function<Retry.RetrySignal, Long>() {
+							@Override
+							public Long apply(Retry.RetrySignal retrySignal) {
+
+								// 根据错误重试次数决定是否抛出原始异常，并终止序列
+
+								System.out.println("序列值：" + retrySignal.totalRetries());
+								// 重试次数小于3，则返回一个值，这里简单的反悔了重试的次数
+								if (retrySignal.totalRetries() < 3) {
+									return retrySignal.totalRetries();
+								} else {
+									// 打印重试时返回的值
+									System.out.println("错误次数：" + errorCount.get());
+									// 重试次数大于等于3，则抛出原始异常，序列终止
+									throw Exceptions.propagate(retrySignal.failure());
+								}
+							}
+						});
+					}
+				})).subscribe();
+
+		/*~
+		序列值：0
+		序列值：1
+		序列值：2
+		序列值：3
+		错误次数：4
+		[ERROR] (main) Operator called default onErrorDropped - reactor.core.Exceptions$ErrorCallbackNotImplemented: java.lang.IllegalArgumentException
+		reactor.core.Exceptions$ErrorCallbackNotImplemented: java.lang.IllegalArgumentException
+		Caused by: java.lang.IllegalArgumentException
+		Caused by: java.lang.IllegalArgumentException
+
+			at com.koobyte.reactor.HandleErrorDemo.retrySignal(HandleErrorDemo.java:258)
+			at com.koobyte.reactor.HandleErrorDemo.main(HandleErrorDemo.java:48)
+
+		 */
+	}
+
+	public void transientError() {
+		System.out.println("> transientError :");
+
+		AtomicInteger errorCount = new AtomicInteger();
+		AtomicInteger transientHelper = new AtomicInteger();
+		// 不断生成序列
+		Flux<Integer> transientFlux = Flux.<Integer>generate(sink -> {
+			int i = transientHelper.getAndIncrement();
+			// i增加到10就完成序列
+			if (i == 10) {
+				sink.next(i);
+				sink.complete();
+			} else if (i % 3 == 0) {
+				// i是3的倍数，直接发送下一个序列
+				sink.next(i);
+			} else {
+				// 否则，抛出异常，抛出异常的值：1,2,4,5,7,8
+				sink.error(new IllegalStateException("Transient error at " + i));
+			}
+		}).doOnError(e -> errorCount.incrementAndGet()); // 出错，errorCount加1
+
+		// 设置瞬态错误模式，指示正在构建的策略应使用Retry.RetrySignal.totalRetriesInARow()而不是Retry.RetrySignal.totalRetries() 。
+		// 瞬态错误是可能发生在突发中的错误，但在另一个错误发生之前通过重试（使用一个或多个 onNext 信号）将其恢复。
+		transientFlux.retryWhen(Retry.max(2)
+				.transientErrors(true) // 设置瞬态错误模式
+		).blockLast(); // blockLast：订阅此Flux并无限期阻止，直到上游发出其最后一个值或完成为止
+		System.out.println(errorCount);
+		/*~:
+		输出：6
+		如果注释掉transientErrors(true)，那么错误将重试2次，达到重试次数然后抛出异常：IllegalStateException : Transient error at 4
+		 */
 	}
 }
